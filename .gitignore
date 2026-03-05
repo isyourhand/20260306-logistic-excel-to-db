@@ -72,3 +72,5 @@ Thumbs.db
 # Project specific
 out/
 *.log
+archive_excel/
+update_excel/

@@ -1,0 +1,3 @@
+filename,enabled,expect_channels,notes
+example_vendor_pricing_2026.02.27.xlsx,1,1,latest active workbook for this feed
+example_reference_only.xlsx,0,0,disabled by default

@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Iterable
@@ -13,6 +14,16 @@ from openpyxl import load_workbook
 
 EXCEL_PATTERNS = ("*.xlsx", "*.xlsm", "*.xltx", "*.xltm")
 INVALID_FS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def configure_console_encoding() -> None:
+    # Avoid UnicodeEncodeError on Windows GBK consoles when filenames include
+    # characters such as NBSP (U+00A0).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 def safe_name(name: str) -> str:
@@ -151,6 +162,7 @@ def process_workbook(path: Path, output_root: Path, data_only: bool = False, bou
 
 
 def main():
+    configure_console_encoding()
     parser = argparse.ArgumentParser(
         description=(
             "Export each sheet in every Excel workbook to structured grids: "
