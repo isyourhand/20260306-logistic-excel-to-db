@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logistics-ingest"
+version = "0.1.0"
+description = "Logistics pricing Excel ingestion pipeline"
+requires-python = ">=3.11"
+dependencies = [
+  "openpyxl>=3.1",
+  "psycopg[binary]>=3.2",
+  "openai>=1.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["logistics_ingest*"]
+

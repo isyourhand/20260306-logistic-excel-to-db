@@ -70,7 +70,7 @@ venv.bak/
 Thumbs.db
 
 # Project specific
-out/
+data/out/
+data/archive_excel/
+data/update_excel/
 *.log
-archive_excel/
-update_excel/

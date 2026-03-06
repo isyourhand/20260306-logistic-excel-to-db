@@ -1,35 +1,22 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import argparse
 import csv
 import json
-import re
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Iterable
 
 from openpyxl import load_workbook
 
+from logistics_ingest.shared.settings import EXCEL_PATTERNS
+from logistics_ingest.shared.text_utils import safe_name
 
-EXCEL_PATTERNS = ("*.xlsx", "*.xlsm", "*.xltx", "*.xltm")
-INVALID_FS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-
-
-def configure_console_encoding() -> None:
-    # Avoid UnicodeEncodeError on Windows GBK consoles when filenames include
-    # characters such as NBSP (U+00A0).
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
-
-
-def safe_name(name: str) -> str:
-    """Make a filesystem-safe path segment while preserving readability."""
-    cleaned = INVALID_FS_CHARS.sub("_", name).strip()
-    return cleaned or "unnamed"
+__all__ = [
+    "EXCEL_PATTERNS",
+    "iter_excel_files",
+    "process_workbook",
+    "safe_name",
+]
 
 
 def iter_excel_files(input_dir: Path) -> Iterable[Path]:
@@ -54,10 +41,6 @@ def is_meaningful(value) -> bool:
 
 
 def infer_effective_bounds(worksheet) -> tuple[int, int]:
-    """
-    Infer a practical grid size from meaningful cells.
-    This avoids sparse-matrix explosions caused by accidental formatting far away.
-    """
     max_row = 1
     max_col = 1
     has_meaningful = False
@@ -159,73 +142,3 @@ def process_workbook(path: Path, output_root: Path, data_only: bool = False, bou
 
     workbook.close()
     return processed
-
-
-def main():
-    configure_console_encoding()
-    parser = argparse.ArgumentParser(
-        description=(
-            "Export each sheet in every Excel workbook to structured grids: "
-            "grid.csv, merged_ranges.json, and grid_filled.csv"
-        )
-    )
-    parser.add_argument(
-        "--input-dir",
-        type=Path,
-        default=Path.cwd(),
-        help="Directory containing Excel files (default: current directory)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=Path.cwd() / "out",
-        help="Output directory root (default: ./out)",
-    )
-    parser.add_argument(
-        "--data-only",
-        action="store_true",
-        help="Read calculated values for formula cells instead of formula text",
-    )
-    parser.add_argument(
-        "--bounds-mode",
-        choices=("effective", "strict"),
-        default="effective",
-        help=(
-            "effective: infer practical bounds from meaningful cells (default); "
-            "strict: use worksheet max_row/max_column exactly"
-        ),
-    )
-
-    args = parser.parse_args()
-    input_dir: Path = args.input_dir.resolve()
-    output_dir: Path = args.output_dir.resolve()
-
-    excel_files = sorted(set(iter_excel_files(input_dir)), key=lambda p: p.name.lower())
-    if not excel_files:
-        print(f"No Excel files found in: {input_dir}")
-        return
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"Input directory : {input_dir}")
-    print(f"Output directory: {output_dir}")
-    print(f"Found {len(excel_files)} workbook(s).")
-
-    for idx, excel_file in enumerate(excel_files, start=1):
-        print(f"[{idx}/{len(excel_files)}] Processing: {excel_file.name}")
-        try:
-            sheets = process_workbook(
-                excel_file,
-                output_dir,
-                data_only=args.data_only,
-                bounds_mode=args.bounds_mode,
-            )
-            print(f"    Exported sheets: {', '.join(sheets)}")
-        except Exception as exc:
-            print(f"    Skipped due to error: {exc}")
-
-    print("Done.")
-
-
-if __name__ == "__main__":
-    main()

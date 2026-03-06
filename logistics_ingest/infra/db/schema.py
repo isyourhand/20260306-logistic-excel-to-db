@@ -1,4 +1,3 @@
-# pricing_schema.py
 from __future__ import annotations
 
 PRICING_SCHEMA_DDL = """
@@ -111,3 +110,6 @@ def ensure_pricing_schema(conn, include_indexes: bool = False) -> None:
     with conn.cursor() as cur:
         cur.execute(ddl)
     conn.commit()
+
+
+__all__ = ["PRICING_SCHEMA_DDL", "PRICING_INDEX_DDL", "ensure_pricing_schema"]

@@ -1,20 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import argparse
 import csv
 import json
-import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
-
-from psycopg import connect
-
-try:
-    from config import PG_DSN as CONFIG_PG_DSN
-except Exception:
-    CONFIG_PG_DSN = ""
 
 
 @dataclass
@@ -104,7 +95,7 @@ def ensure_tables(conn) -> None:
     conn.commit()
 
 
-def upsert_sheet(conn, batch_id: uuid.UUID, bundle: SheetBundle, rows: list[list[str]], col_count: int) -> None:
+def insert_sheet(conn, batch_id: uuid.UUID, bundle: SheetBundle, rows: list[list[str]], col_count: int) -> None:
     row_count = len(rows)
 
     with conn.cursor() as cur:
@@ -156,62 +147,52 @@ def upsert_sheet(conn, batch_id: uuid.UUID, bundle: SheetBundle, rows: list[list
     conn.commit()
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Import grid_filled.csv and merged_ranges.json into PostgreSQL raw tables"
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=Path.cwd() / "out",
-        help="Root directory produced by export_excel_grids.py (default: ./out)",
-    )
-    parser.add_argument(
-        "--dsn",
-        default=os.getenv("PG_DSN", CONFIG_PG_DSN),
-        help="PostgreSQL DSN string. Defaults to env PG_DSN, then config.py",
-    )
-    parser.add_argument(
-        "--batch-id",
-        default="",
-        help="Optional import batch UUID. If omitted, a new UUID is generated",
-    )
-    return parser.parse_args()
+__all__ = [
+    "SheetBundle",
+    "find_sheet_bundles",
+    "read_grid_rows",
+    "ensure_tables",
+    "insert_sheet",
+    "list_sheet_metas",
+    "load_rows",
+    "latest_batch_id",
+]
 
 
-def main() -> None:
-    args = parse_args()
-    if not args.dsn:
-        raise SystemExit("Missing DSN. Provide --dsn or set PG_DSN.")
+def list_sheet_metas(conn, batch_id: str | None):
+    where = ""
+    params: tuple[str, ...] = ()
+    if batch_id:
+        where = "WHERE import_batch_id = %s"
+        params = (batch_id,)
 
-    output_dir: Path = args.output_dir.resolve()
-    if not output_dir.exists():
-        raise SystemExit(f"Output dir not found: {output_dir}")
-
-    batch_id = uuid.UUID(args.batch_id) if args.batch_id else uuid.uuid4()
-
-    bundles = list(find_sheet_bundles(output_dir))
-    if not bundles:
-        print(f"No sheet bundles found under: {output_dir}")
-        return
-
-    print(f"Import batch : {batch_id}")
-    print(f"Output dir   : {output_dir}")
-    print(f"Sheet bundles: {len(bundles)}")
-
-    with connect(args.dsn) as conn:
-        ensure_tables(conn)
-
-        for idx, bundle in enumerate(bundles, start=1):
-            rows, col_count = read_grid_rows(bundle.grid_filled_path)
-            print(
-                f"[{idx}/{len(bundles)}] {bundle.workbook_name} / {bundle.sheet_title} "
-                f"rows={len(rows)} cols={col_count}"
-            )
-            upsert_sheet(conn, batch_id, bundle, rows, col_count)
-
-    print("Import complete.")
+    sql = f"""
+    SELECT id, workbook_name, sheet_name
+    FROM raw_sheet_meta
+    {where}
+    ORDER BY id
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        return cur.fetchall()
 
 
-if __name__ == "__main__":
-    main()
+def load_rows(conn, meta_id: int) -> list[list[str]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT row_data
+            FROM raw_sheet_rows
+            WHERE meta_id = %s
+            ORDER BY row_index
+            """,
+            (meta_id,),
+        )
+        return [list(r[0]) for r in cur.fetchall()]
+
+
+def latest_batch_id(conn) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT import_batch_id::text FROM raw_sheet_meta ORDER BY imported_at DESC LIMIT 1")
+        row = cur.fetchone()
+        return row[0] if row else None
